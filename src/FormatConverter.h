@@ -13,6 +13,7 @@
 #include <future>
 #include <iostream>
 #include <thread>
+#include <chrono>
 #include <opencv2/opencv.hpp>
 #include "format/HeifFileHolder.h"
 #include "format/OpenCVFileHolder.h"
@@ -29,13 +30,32 @@ class FormatConverter {
         }
     }
 
-    void processFile(uint counter, const std::filesystem::path &path) {
+    bool processFile(uint counter, const std::filesystem::path &path) {
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
         std::string ext = path.extension().string();
+        std::string outputPath = outputPath_ + "/" + std::to_string(counter) + ".webp";
+
+        std::unique_ptr<FileHolder> fileHolder;
         if(ext == ".heic" || ext == ".HEIC") {
-            processHeifFile(counter, path);
+            fileHolder = std::make_unique<HeifFileHolder>(path);
         } else if(ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".JPG" || ext == ".JPEG" || ext == ".PNG") {
-            processOpenCVFile(counter, path);
+            fileHolder = std::make_unique<OpenCVFileHolder>(path);
+        } else {
+            return false;
         }
+
+        fileHolder->open();
+        saveFile(outputPath, *fileHolder);
+
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+
+            std::cout << "Converted \"" << path.string() << "\" to \"" << outputPath << "\" in " << (
+                (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() / 1000.0
+            ) << " sec." << std::endl;
+        }
+        return true;
     }
 
     void calculateResizedDimensions(int &width, int &height) {
@@ -69,45 +89,20 @@ class FormatConverter {
         cv::resize(holder.asMatrix(), output, cv::Size(width, height), 0, 0, cv::INTER_LINEAR);
 
         std::vector<int> params;
-        params.push_back(cv::IMWRITE_WEBP_QUALITY); // Set the compression quality parameter
-        params.push_back(95); // Adjust the quality value (0-100, 100 being the best quality)
+        params.push_back(cv::IMWRITE_WEBP_QUALITY);
+        params.push_back(95); // Quality
 
         cv::imwrite(outputPath, output, params);
     }
 
-    void processHeifFile(uint counter, const std::filesystem::path &path) {
-        std::string outputPath = outputPath_ + "/" + std::to_string(counter) + ".webp";
-
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            std::cout << "Converting '" << path << "' to '" << outputPath << "'..." << std::endl;
-        }
-
-        HeifFileHolder heif(path);
-        heif.open();
-
-        saveFile(outputPath, heif);
-    }
-
-    void processOpenCVFile(uint counter, const std::filesystem::path &path) {
-        std::string outputPath = outputPath_ + "/" + std::to_string(counter) + ".webp";
-
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            std::cout << "Converting '" << path.string() << "' to '" << outputPath << "'..." << std::endl;
-        }
-
-        OpenCVFileHolder image(path);
-        image.open();
-
-        saveFile(outputPath, image);
-    }
 public:
     FormatConverter(std::string inputPath, std::string outputPath)
         : inputPath_(std::move(inputPath)), outputPath_(std::move(outputPath)) {}
 
     void process(int maximumProcessCount = 8) {
         lazyInitOutputPath();
+
+        std::chrono::time_point start = std::chrono::steady_clock::now();
 
         uint counter = 0;
 
@@ -147,7 +142,9 @@ public:
             }
         }
 
-        std::cout << "Processed " << counter << " files!" << std::endl;
+        std::cout << "Processed " << counter << " files in " << (
+            (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() / 1000.0
+        ) << " sec." << std::endl;
     }
 };
 

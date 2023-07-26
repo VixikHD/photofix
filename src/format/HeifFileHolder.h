@@ -30,7 +30,7 @@ public:
         heif_context_free(ctx_);
     }
 
-    void open() {
+    void open() override {
         ctx_ = heif_context_alloc();
 
         heif_context_read_from_file(ctx_, path_.string().c_str(), nullptr);

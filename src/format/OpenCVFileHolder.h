@@ -14,7 +14,7 @@ class OpenCVFileHolder : public FileHolder {
 public:
     explicit OpenCVFileHolder(std::filesystem::path path_): FileHolder(std::move(path_)) {}
 
-    void open() {
+    void open() override {
         mat_ = cv::imread(path_);
     }
 

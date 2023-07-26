@@ -15,6 +15,8 @@ protected:
 public:
     explicit FileHolder(std::filesystem::path path_): path_(std::move(path_)) {}
 
+    virtual void open() = 0;
+
     [[nodiscard]] virtual const cv::Mat &asMatrix() const  = 0;
 
     [[nodiscard]] virtual int getWidth() const = 0;
